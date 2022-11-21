@@ -24,6 +24,8 @@ gplt.labels('X', 'Y')
 
 ## Basic Plot
 ```python
+import numpy as np
+
 t = np.linspace(0, 10, 100)
 y = 2 * np.sin(t + 0.6)
 noise = 0.5 * np.random.randn(100)
