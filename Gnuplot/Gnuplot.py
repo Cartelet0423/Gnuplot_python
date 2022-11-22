@@ -84,7 +84,7 @@ class Gnuplot:
             settings = []
             plots = []
             for cmd in fig:
-                (settings if cmd.startswith("set ") else plots).append(cmd)
+                (plots if "plot" in cmd else settings).append(cmd)
             for cmd in settings + plots:
                 cls.fig.c(cmd)
         cls.commands = [[]]
@@ -92,10 +92,12 @@ class Gnuplot:
         cls.cnt = [0]
 
     @classmethod
-    def figure(cls):
+    def figure(cls, figsize=(None, None)):
         cls.fig = gp()
         cls.commands.append([])
         cls.cnt.append(0)
+        if figsize and all(figsize):
+            cls.commands[-1].append(f"set size ratio {figsize[0]/figsize[1]:.3f}")
 
         @exit_register
         def _show():
@@ -260,7 +262,47 @@ class Gnuplot:
         )
 
     @classmethod
-    def savefig(cls, filename):
+    def mxtics(cls, n=None):
+        cls._figure(cls)
+        assert n is None or type(n) is int, ValueError("n must be an integer.")
+        n = "" if n is None else n
+        cls.commands[-1].append(f"set mxtics {n};")
+
+    @classmethod
+    def mytics(cls, n=None):
+        cls._figure(cls)
+        assert n is None or type(n) is int, ValueError("n must be an integer.")
+        n = "" if n is None else n
+        cls.commands[-1].append(f"set mytics {n};")
+
+    @classmethod
+    def mtics(cls, nx=None, ny=None):
+        cls._figure(cls)
+        for n in (nx, ny):
+            assert n is None or type(n) is int, ValueError(
+                "nx and ny must be an integer."
+            )
+        nx = "" if nx is None else nx
+        ny = "" if ny is None else ny
+        cls.commands[-1].append(f"set mxtics {nx}; set mytics {ny};")
+
+    @classmethod
+    def grid(cls, which="major", color=None, lw=None, lt=None):
+        cls._figure(cls)
+        assert which in ("major", "minor", "both",), ValueError(
+            f'"{which}" is not a valid value for which; supported values are  "major", "minor", or "both".'
+        )
+        w = {
+            "major": "xtics ytics",
+            "minor": " mxtics mytics",
+            "both": "xtics mxtics ytics mytics",
+        }[which]
+        cls.commands[-1].append(
+            f"set grid {w} {cls._make_style_command(cls, color, None, lw, lt)};"
+        )
+
+    @classmethod
+    def savefig(cls, filename, size=(None, None)):
         cls._figure(cls)
         assert filename[-4:] in (
             ".png",
@@ -270,10 +312,12 @@ class Gnuplot:
         ), "File expansion must be PNG or EPS."
         if filename[-4:] in (".png", ".PNG"):
             t = "pngcairo"
+            if size and all(size):
+                t += f"; set term pngcairo size {size[1]}, {size[0]}"
         else:
             t = "postscript eps"
         cls.commands[-1].append(
-            f'set terminal {t};set out "{filename}";replot; set terminal wxt;'
+            f'set terminal {t}; set out "{filename}"; replot; set terminal wxt;'
         )
         cls.show()
 
