@@ -56,9 +56,6 @@ from PyGnuplot import gp
 try:
 
     def exit_register(fun, *args, **kwargs):
-        """Decorator that registers at post_execute. After its execution it
-        unregisters itself for subsequent runs."""
-
         def callback():
             fun(*args, **kwargs)
             ip.events.unregister("post_execute", callback)
@@ -135,29 +132,40 @@ class Gnuplot:
             x, y = np.arange(len(x)), x
         cls.fig.save([x, y], filename=f"tmp/tmp{sum(cls.cnt)+1}.dat")
         command = cls._make_style_command(cls, color, dt, lw, lt)
-        if cls.cnt[-1] == 0:
-            cls.commands[-1].append(
-                f"plot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w l t '{label}'{command}"
-            )
-        else:
-            cls.commands[-1].append(
-                f"replot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w l t '{label}'{command}"
-            )
+        cls.commands[-1].append(
+            (
+                f"plot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w l t '{label}'{command}",
+                f"replot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w l t '{label}'{command}",
+            )[cls.cnt[-1] != 0]
+        )
         cls.cnt[-1] += 1
 
     @classmethod
     def scatter(cls, x, y, label="", color=None, style=None, size=None):
         cls._figure(cls)
         cls.fig.save([x, y], filename=f"tmp/tmp{sum(cls.cnt)+1}.dat")
-        command = cls._make_style_command(cls, color, style, size, scatter=True)
-        if cls.cnt[-1] == 0:
-            cls.commands[-1].append(
-                f"plot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w p t '{label}'{command}"
-            )
-        else:
-            cls.commands[-1].append(
-                f"replot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w p t '{label}'{command}"
-            )
+        command = cls._make_style_command(cls, color, style, size, mode="scatter")
+        cls.commands[-1].append(
+            (
+                f"plot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w p t '{label}'{command}",
+                f"replot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w p t '{label}'{command}",
+            )[cls.cnt[-1] != 0]
+        )
+        cls.cnt[-1] += 1
+
+    @classmethod
+    def hist(cls, x, bins=10, density=None, label="", color=None, lw=None):
+        cls._figure(cls)
+        y, x = np.histogram(x, bins=bins, density=density)
+        x = (x[:-1] + x[1:]) / 2
+        cls.fig.save([x, y], filename=f"tmp/tmp{sum(cls.cnt)+1}.dat")
+        command = cls._make_style_command(cls, color, None, lw, mode="hist")
+        cls.commands[-1].append(
+            (
+                f"plot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w boxes t '{label}'{command}",
+                f"replot 'tmp/tmp{sum(cls.cnt)+1}.dat' u 1:2 w boxes t '{label}'{command}",
+            )[cls.cnt[-1] != 0]
+        )
         cls.cnt[-1] += 1
 
     @classmethod
@@ -187,18 +195,16 @@ class Gnuplot:
         )
         if plot:
             command = cls._make_style_command(cls, color, dt, lw, lt)
-            f, g = func[: func.index("=")].strip(), func[func.index("=") :].strip()
+            f = func[: func.index("=")].strip()
             if label is None:
                 label = f
             v = via.split(",")
-            if cls.cnt[-1] == 0:
-                cls.commands[-1].append(
-                    f"{func};{'; '.join([f'{i}={r}' for i, r in zip(v, result[0])])};plot {f} w l t '{label}'{command}"
-                )
-            else:
-                cls.commands[-1].append(
-                    f"{func};{'; '.join([f'{i}={r}' for i, r in zip(v, result[0])])};replot {f} w l t '{label}'{command}"
-                )
+            cls.commands[-1].append(
+                (
+                    f"{func};{'; '.join([f'{i}={r}' for i, r in zip(v, result[0])])};plot {f} w l t '{label}'{command}",
+                    f"{func};{'; '.join([f'{i}={r}' for i, r in zip(v, result[0])])};replot {f} w l t '{label}'{command}",
+                )[cls.cnt[-1] != 0]
+            )
         cls.cnt[-1] += 1
 
         return result
@@ -309,7 +315,7 @@ class Gnuplot:
             ".PNG",
             ".eps",
             ".EPS",
-        ), "File expansion must be PNG or EPS."
+        ), ValueError("File expansion must be PNG or EPS.")
         if filename[-4:] in (".png", ".PNG"):
             t = "pngcairo"
             if size and all(size):
@@ -321,14 +327,18 @@ class Gnuplot:
         )
         cls.show()
 
-    def _make_style_command(self, color, style, size, lt=None, scatter=False):
+    def _make_style_command(self, color, style, size, lt=None, mode="line"):
         cc = f" lc '{color}' " if color is not None else ""
-        if scatter:
+        if mode == "line":
+            dtc = f" dt {style}" if style is not None else ""
+            tc = f" lt {lt}" if lt is not None else ""
+            sc = f" lw {size}" if size is not None else ""
+        elif mode == "scatter":
             dtc = ""
             tc = f" pt {style}" if style is not None else ""
             sc = f" ps {size}" if size is not None else ""
-        else:
-            dtc = f" dt {style}" if style is not None else ""
-            tc = f" lt {lt}" if lt is not None else ""
+        elif mode == "hist":
+            dtc = ""
+            tc = ""
             sc = f" lw {size}" if size is not None else ""
         return "".join([cc, dtc, sc, tc])
